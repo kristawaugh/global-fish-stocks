@@ -8,7 +8,7 @@
 - Krista Waugh, kristawaugh
 
 
-
+This module will focus on understanding and replicating fisheries stock assessment data and fisheries collapse, using libraries "tidyverse" and "readxl"
 
 
 
