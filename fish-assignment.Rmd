@@ -1,0 +1,311 @@
+---
+output: github_document
+Auhors: Heather Callaway and Krista Waugh
+---
+
+```{r include = FALSE}
+knitr::opts_chunk$set(message = FALSE)
+```
+
+
+We will use data from the [RAM Legacy Stock Assessment Database](http://ramlegacy.marinebiodiversity.ca/ram-legacy-stock-assessment-database)
+
+
+```{r message = FALSE}
+library("tidyverse")
+library("readxl")
+```
+
+
+
+```{r}
+
+#download.file("https://depts.washington.edu/ramlegac/wordpress/databaseVersions/RLSADB_v3.0_(assessment_data_only)_excel.zip", 
+
+# backup copy for class:
+download.file("https://github.com/espm-157/fish-template/releases/download/data/ramlegacy.zip", 
+              "ramlegacy.zip")
+path <- unzip("ramlegacy.zip")  #unzip the .xls files
+
+sheets <- readxl::excel_sheets(path) #use the readxl package to identify sheet names 
+
+ram <- lapply(sheets, readxl::read_excel, path = path)  #read the data from all 3 sheets into a list
+
+names(ram) <- sheets # give the list of datatables their assigned sheet names
+
+## check your names
+names(ram)
+
+## check your data
+head(ram$area)
+
+```
+```{r}
+ram$taxonomy %>% 
+  filter(genus == "Gadus") %>%
+  select(tsn) %>%
+  left_join(ram$stock) %>%
+  left_join(ram$area)
+ 
+```
+```{r}
+ram$stock %>% group_by(tsn) %>%
+  summarize(count = n()) %>%
+  arrange(desc(count))
+```
+
+```{r}
+ram$stock
+   
+ 
+```
+```{r}
+cod_tsn <- cod_time_area <- ram$taxonomy %>% 
+  filter(genus == "Gadus") %>%
+  select(tsn)
+
+cod_tsn
+```
+
+```{r}
+cod <- ram$taxonomy %>% 
+  filter(scientificname == "Gadus morhua") %>%
+  select(tsn) %>%
+  left_join(ram$stock, by = "tsn") %>%
+  left_join(ram$area, by = "areaid") %>%
+  left_join(ram$timeseries, by= "stockid") %>%
+  left_join(ram$tsmetrics, by = c("tsid" = "tsunique")) %>%
+  filter(tscategory == "CATCH or LANDINGS")  
+  
+cod
+#note: changed from filtering by genus to by species 
+
+```
+```{r}
+cod <- ram$taxonomy %>% 
+  left_join(ram$stock, by = "tsn") %>%
+  left_join(ram$area, by = "areaid") %>%
+  left_join(ram$timeseries, by= "stockid") %>%
+  left_join(ram$tsmetrics, by = c("tsid" = "tsunique")) %>%
+
+  filter(tscategory == "CATCH or LANDINGS")  %>%
+  filter(tsunitsshort == "MT") %>%
+  filter(genus == "Gadus", species == "morhua") 
+  
+
+cod
+#note: changed from filtering by genus to by species (Dgfa pacific)
+
+```
+```{r}
+cod %>% 
+group_by(tsyear) %>%
+summarize(total_catch = sum(tsvalue, na.rm= TRUE)) %>%
+ggplot(aes(tsyear, total_catch)) + geom_line()
+
+```
+
+```{r}
+cod %>%
+  select (areaname, areacode, areaid, region, country) %>%
+  distinct()
+#Which in north atlantic, which not?
+#Filter out area IDs by hand
+#First, get rid of pacific cod. Filter by species rather than genus
+
+```
+```{r}
+ram$tsmetrics %>%
+  filter(tscategory == "CATCH or LANDINGS") %>%
+  left_join(ram$timeseries, by = c("tsunique" = "tsid"))
+  
+  
+```
+
+
+#Investigating the North-Atlantic Cod
+
+First, We seek to replicate the following figure from the Millenium Ecosystem Assessment Project using the RAM data. 
+
+![](https://github.com/espm-157/website/raw/master/static/img/cod.jpg)
+
+
+```{r}
+ ram$bioparams_values_views
+```
+
+## Plotting Canada's overfishing trends 
+
+Here, we were able to recreate the above graph by plotting the total catch in Canada. To produce this graph, we used the filter() function to single out a specific country, Canada. 
+
+```{r }
+cod %>%
+  filter(country == "Canada") %>%
+  group_by(tsyear) %>%
+  summarise(total_catch = sum(tsvalue, na.rm=TRUE)) %>%
+  ggplot(aes(tsyear, total_catch)) + geom_line()
+
+```
+
+##Analysis: Canada's overfishing trends versus worldwide 
+
+Based on the amount of cod caught in Canada in the 19th century, Canada has a longer history of heavy fishing and it's water have been heavily fished consitently over time. Simialr to the graph of the total fish caught throughout the world, the amount of fish caught spikedto its highest amount around the 1960s. But unlike the cod catches worldwide, the amount caught in Canada dropped overall in the late 1970s, due a regulation put in place to put regulation of fishing in control of the goverment for 200 miles offshore.  This is not reflected in the worldwide graph because this regulationmonly occured in Canadian waters. 
+
+#Examining Fishing Stock Collapses
+
+We seek to replicate the temporal trend in stock declines shown in [Worm et al 2006](http://doi.org/10.1126/science.1132294):
+
+![](https://espm-157.carlboettiger.info/img/worm2006.jpg)
+
+
+This graph plots data from about 1950 to 2006. This graph is plotting species richness in differnet areas. The diamond shapes are plotting by year, and the triangles are plotting cumulative losses in species richness. The marine ecosystems lacking in species richness are expressing a much faster rate of decline than the marine ecosystems with high levels of species richness. 
+
+
+
+```{r}
+# carl/andrew code, solid
+fishes <-
+  ram$timeseries_values_views %>%
+  select(assessid, stockid, year, SSB, TC) %>%
+  left_join(ram$stock) %>%
+  left_join(ram$area) %>% 
+  left_join(ram$timeseries_units_views %>% 
+      rename(TC_units = TC, SSB_units = SSB)) %>% 
+  select(commonname, areaname, country, year, SSB, TC,
+         TC_units, SSB_units,
+         scientificname, assessid, stockid, areaid)
+fishes
+```
+
+```{r}
+#The filters below were removed because they were deemed unneccesary
+ #filter(tscategory == "CATCH or LANDINGS")  %>%
+ #filter(tsunitsshort == "MT") %>%
+first_fish <- fishes %>%   
+  group_by(year, scientificname) %>%
+  summarize(combine_stocks = sum(TC, na.rm = TRUE)) %>%
+  filter(year >= 1950, year <= 2006) %>%
+  na.omit() %>%
+  group_by(year) %>%
+  tally() 
+
+  
+first_fish
+ 
+```
+
+##Plotting total taxa caught worldwide 1950-2006
+
+To adapt the table we created in the first exercise, we selected and 
+manipulated the necessary columns to plot the number of total taxa caught each year 
+from 1950 til 2006 using ggplot2. 
+
+
+```{r}
+ggplot(first_fish, aes(x= year, n)) + geom_point()
+
+```
+
+##Removing incomplete datasets
+
+Here, we manipulated the data do remove all NA values, and species fo fish that don't have data for the full 57 year range between 1950 and 2006. 
+
+
+```{r}
+#filtering out the tally using "57" collects the values for which there is data for all 57 years.
+second_fish <- fishes %>%   
+  group_by(year, scientificname) %>%
+  summarize(combine_stocks = sum(TC)) %>%
+  filter(year >= 1950, year <= 2006) %>%
+  na.omit() %>%
+  group_by(scientificname) %>%
+  count(by = "tsyear") %>%
+  filter(n == 57)
+ 
+  
+second_fish
+
+
+```
+
+
+<<<<<<< HEAD
+**Question 2:** How many taxa have data for the full range? 24
+=======
+>>>>>>> 1c4bddfb81799274f1f3db6cb260161b8bdd6d43
+
+
+```{r}
+taxa <-
+ram$taxonomy %>% 
+  left_join(ram$stock, by = "tsn") %>%
+  left_join(ram$area, by = "areaid") %>%
+  left_join(ram$timeseries, by= "stockid") %>%
+  left_join(ram$tsmetrics, by = c("tsid" = "tsunique")) %>%
+  
+  group_by(scientificname.x) %>%
+  
+  filter(tsyear >= 1950) %>%
+  filter(tsyear <= 2006)
+taxa
+
+```
+
+```{r}
+
+taxa %>%
+  select ("scientificname.x", "stockid", "commonname") %>%
+  tally()
+
+```
+
+
+```{r}
+
+```
+
+
+## Task 3: Which fisheries have collapsed?
+
+A fishery may be considered *collapsed* when total catch (TC) falls
+below 10% of its peak. For those stocks with complete data sets, create a new 
+tidy table including columns: `stockid`, `TC`, `year`, `collapsed`, and `cumulative`, 
+where `collapsed` is a logical (True or False) for whether or not that fishery could
+be considered collapsed in that year, and `cumulative` is the count of total years
+the fishery has been collapsed at that point in time. 
+
+```{r}
+
+##This chunk and the following dont want to run 
+collapse <- taxa %>%
+  left_join(fishes, by = c(tsyear = "year", "stockid")) %>%
+  select("stockid", "TC", "tsyear") %>%
+  na.omit() %>% 
+  unique() %>%
+  
+  filter(tsyear >= 1950) %>%
+  filter(tsyear <= 2006)
+collapse
+``` 
+
+```{r}
+collapsed <- collapse %>%
+  group_by(stockid) %>%
+  mutate(collapsed = TC<(max(TC) * .1))
+collapsed
+
+collapsed_new <- collapsed %>%
+  mutate(cumulative = cumsum(collapsed == 1L))
+collapsed_new
+  
+```
+
+  
+
+## Task 4: Plotting total catch
+
+Using `geom_area()` plot the TC per stockid acros all years. 
+```{r}
+ggplot(collapsed_new, aes(x= stockid, TC)) + geom_area()
+```
+
